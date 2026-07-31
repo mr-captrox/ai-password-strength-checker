@@ -11,6 +11,7 @@
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 </head>
 
 <body>
@@ -79,6 +80,7 @@
     </div>
 
     <div class="metrics-box" style="margin-top: 15px; font-size: 14px;">
+        <p style="margin-bottom: 5px; color: #6a0dad;"><i class="fa-solid fa-brain"></i> TF.js AI Prediction: <strong id="aiPrediction">Loading Data...</strong></p>
         <p style="margin-bottom: 5px;"><i class="fa-solid fa-stopwatch"></i> Estimated Crack Time: <strong id="crackTime">Instant</strong></p>
         <p><i class="fa-solid fa-user-secret"></i> Breach Status: <strong id="pwnedStatus">Waiting...</strong></p>
     </div>

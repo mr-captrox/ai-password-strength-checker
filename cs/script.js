@@ -12,8 +12,70 @@ const special = document.getElementById("special");
 
 const crackTimeElement = document.getElementById("crackTime");
 const pwnedStatusElement = document.getElementById("pwnedStatus");
+const aiPredictionElement = document.getElementById("aiPrediction");
 
+let tfModel = null;
 let pwnedTimeout;
+
+function encodePasswordForAI(password) {
+    const max_length = 20;
+    let encoded = [];
+    for (let i = 0; i < max_length; i++) {
+        if (i < password.length) encoded.push(password.charCodeAt(i));
+        else encoded.push(0);
+    }
+    return encoded;
+}
+
+async function initializeAI() {
+    try {
+        const response = await fetch('../password_dataset.csv');
+        const textData = await response.text();
+        const rows = textData.split('\n').slice(1);
+        
+        let xs = [];
+        let ys = [];
+        
+        for (let row of rows) {
+            const cols = row.trim().split(',');
+            if (cols.length === 2) {
+                xs.push(encodePasswordForAI(cols[0]));
+                ys.push(parseInt(cols[1]));
+            }
+        }
+        
+        const X = tf.tensor2d(xs);
+        const y = tf.tensor2d(ys, [ys.length, 1]);
+        
+        aiPredictionElement.innerHTML = "Building Neural Network...";
+        
+        tfModel = tf.sequential();
+        tfModel.add(tf.layers.dense({units: 16, activation: 'relu', inputShape: [20]}));
+        tfModel.add(tf.layers.dense({units: 16, activation: 'relu'}));
+        tfModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+        
+        tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy'});
+        
+        aiPredictionElement.innerHTML = "Training AI...";
+        
+        await tfModel.fit(X, y, {
+            epochs: 20,
+            batchSize: 32,
+            callbacks: {
+                onEpochEnd: (epoch, logs) => {
+                    aiPredictionElement.innerHTML = `Training AI (Epoch ${epoch+1}/20)...`;
+                }
+            }
+        });
+        
+        aiPredictionElement.innerHTML = "✅ AI Ready!";
+        
+    } catch(e) {
+        aiPredictionElement.innerHTML = "❌ AI Failed to Load";
+        console.error("TFJS Error:", e);
+    }
+}
+initializeAI();
 
 async function checkPwned(pass) {
     if (pass.length === 0) {
@@ -83,7 +145,22 @@ function checkPassword(){
         crackTimeElement.innerHTML = "Instant";
         pwnedStatusElement.innerHTML = "Waiting...";
         pwnedStatusElement.style.color = "#333";
+        if (tfModel) aiPredictionElement.innerHTML = "✅ AI Ready!";
         return;
+    }
+
+    // Run Local TFJS AI Inference
+    if (tfModel) {
+        const inputTensor = tf.tensor2d([encodePasswordForAI(pass)]);
+        const prediction = tfModel.predict(inputTensor);
+        const pValue = prediction.dataSync()[0]; // 0 is bad, 1 is good
+        const crackProbability = (1.0 - pValue) * 100;
+        
+        if (crackProbability > 50) {
+            aiPredictionElement.innerHTML = `<span style="color:red;">${crackProbability.toFixed(1)}% likely to be hacked</span>`;
+        } else {
+            aiPredictionElement.innerHTML = `<span style="color:green;">${crackProbability.toFixed(1)}% likely to be hacked</span>`;
+        }
     }
 
     // Update UI rules
@@ -182,6 +259,7 @@ Generated on: ${new Date().toLocaleString()}
 
 - Password Score: ${score.innerHTML}
 - Strength Rating: ${text.innerHTML}
+- AI Hack Probability: ${aiPredictionElement.innerHTML.replace(/<[^>]*>?/gm, '')}
 - Estimated Crack Time: ${crackTimeElement.innerHTML}
 - Breach Status: ${pwnedStatusElement.innerHTML.replace(/<[^>]*>?/gm, '')} // Remove HTML tags from status
 
