@@ -27,50 +27,65 @@ function encodePasswordForAI(password) {
     return encoded;
 }
 
-async function initializeAI() {
-    try {
-        const response = await fetch('../password_dataset.csv');
-        const textData = await response.text();
-        const rows = textData.split('\n').slice(1);
-        
-        let xs = [];
-        let ys = [];
-        
-        for (let row of rows) {
-            const cols = row.trim().split(',');
-            if (cols.length === 2) {
-                xs.push(encodePasswordForAI(cols[0]));
-                ys.push(parseInt(cols[1]));
+async function trainAndSaveModel() {
+    const response = await fetch('../password_dataset.csv');
+    const textData = await response.text();
+    const rows = textData.split('\n').slice(1);
+    
+    let xs = [];
+    let ys = [];
+    
+    for (let row of rows) {
+        const cols = row.trim().split(',');
+        if (cols.length === 2) {
+            xs.push(encodePasswordForAI(cols[0]));
+            ys.push(parseInt(cols[1]));
+        }
+    }
+    
+    const X = tf.tensor2d(xs);
+    const y = tf.tensor2d(ys, [ys.length, 1]);
+    
+    aiPredictionElement.innerHTML = "🔧 Building Neural Network...";
+    
+    tfModel = tf.sequential();
+    tfModel.add(tf.layers.embedding({inputDim: 256, outputDim: 16, inputLength: 20}));
+    tfModel.add(tf.layers.flatten());
+    tfModel.add(tf.layers.dense({units: 16, activation: 'relu'}));
+    tfModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+    
+    tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
+    
+    aiPredictionElement.innerHTML = "🏋️ Training AI (first time only)...";
+    
+    await tfModel.fit(X, y, {
+        epochs: 20,
+        batchSize: 32,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                aiPredictionElement.innerHTML = `🏋️ Training AI (Epoch ${epoch+1}/20)...`;
             }
         }
-        
-        const X = tf.tensor2d(xs);
-        const y = tf.tensor2d(ys, [ys.length, 1]);
-        
-        aiPredictionElement.innerHTML = "Building Neural Network...";
-        
-        tfModel = tf.sequential();
-        tfModel.add(tf.layers.embedding({inputDim: 256, outputDim: 16, inputLength: 20}));
-        tfModel.add(tf.layers.flatten());
-        tfModel.add(tf.layers.dense({units: 16, activation: 'relu'}));
-        tfModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
-        
-        tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
-        
-        aiPredictionElement.innerHTML = "Training AI...";
-        
-        await tfModel.fit(X, y, {
-            epochs: 20,
-            batchSize: 32,
-            callbacks: {
-                onEpochEnd: (epoch, logs) => {
-                    aiPredictionElement.innerHTML = `Training AI (Epoch ${epoch+1}/20)...`;
-                }
-            }
-        });
-        
-        aiPredictionElement.innerHTML = "✅ AI Ready!";
-        
+    });
+    
+    // Save the trained model to localStorage so we never train again
+    await tfModel.save('localstorage://password-ai-model');
+    aiPredictionElement.innerHTML = "✅ AI Ready! (Saved to browser)";
+}
+
+async function initializeAI() {
+    try {
+        // Try to load a previously saved model from localStorage
+        const savedModels = await tf.io.listModels();
+        if ('localstorage://password-ai-model' in savedModels) {
+            aiPredictionElement.innerHTML = "⚡ Loading AI from cache...";
+            tfModel = await tf.loadLayersModel('localstorage://password-ai-model');
+            tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
+            aiPredictionElement.innerHTML = "✅ AI Ready! (Loaded from cache)";
+        } else {
+            // First time: train and save the model
+            await trainAndSaveModel();
+        }
     } catch(e) {
         aiPredictionElement.innerHTML = "❌ AI Failed to Load";
         console.error("TFJS Error:", e);
