@@ -50,11 +50,12 @@ async function initializeAI() {
         aiPredictionElement.innerHTML = "Building Neural Network...";
         
         tfModel = tf.sequential();
-        tfModel.add(tf.layers.dense({units: 16, activation: 'relu', inputShape: [20]}));
+        tfModel.add(tf.layers.embedding({inputDim: 256, outputDim: 16, inputLength: 20}));
+        tfModel.add(tf.layers.flatten());
         tfModel.add(tf.layers.dense({units: 16, activation: 'relu'}));
         tfModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
         
-        tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy'});
+        tfModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
         
         aiPredictionElement.innerHTML = "Training AI...";
         
