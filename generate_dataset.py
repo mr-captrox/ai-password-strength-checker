@@ -5,14 +5,23 @@ import urllib.request
 
 def generate_dataset():
     print("Fetching bad passwords...")
-    # 1. Fetch 500 real bad passwords from the famous SecLists repository
-    url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-500.txt"
-    try:
-        response = urllib.request.urlopen(url)
-        bad_passwords = response.read().decode('utf-8').splitlines()[:500]
-    except Exception as e:
-        print("Network error, generating fallback bad passwords...")
-        bad_passwords = [f"password{i}" for i in range(500)]
+    print("Generating bad passwords...")
+    base_bad = [
+        "123456", "password", "12345678", "qwerty", "12345", 
+        "123456789", "football", "1234", "1234567", "admin", 
+        "111111", "qwertyuiop", "123123", "monkey", "sunshine",
+        "letmein", "password123", "admin123", "dragon", "1234567890"
+    ]
+    bad_passwords = []
+    # Generate variations to reach 500
+    while len(bad_passwords) < 500:
+        for b in base_bad:
+            bad_passwords.append(b)
+            bad_passwords.append(b + "123")
+            bad_passwords.append(b + "!")
+            bad_passwords.append(b.upper())
+            bad_passwords.append("my" + b)
+            if len(bad_passwords) >= 500: break
     
     print("Generating good passwords...")
     # 2. Generate 500 mathematically secure passwords using the Crypto module
