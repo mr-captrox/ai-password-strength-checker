@@ -10,166 +10,154 @@ const lower = document.getElementById("lower");
 const number = document.getElementById("number");
 const special = document.getElementById("special");
 
-const commonPasswords = [
-    "password", "123456", "123456789", "12345", "12345678", "111111", 
-    "1234567", "sunshine", "qwerty", "iloveyou", "admin", "welcome", 
-    "123123", "monkey", "secret", "letmein", "password123", "admin123", "dragon"
-];
+const crackTimeElement = document.getElementById("crackTime");
+const pwnedStatusElement = document.getElementById("pwnedStatus");
 
-function isCommonPassword(pass) {
-    if (pass.length < 4) return false;
-    let normalized = pass.toLowerCase();
-    normalized = normalized.replace(/@/g, 'a')
-                           .replace(/0/g, 'o')
-                           .replace(/1/g, 'i')
-                           .replace(/\$/g, 's')
-                           .replace(/!/g, 'i')
-                           .replace(/3/g, 'e');
+let pwnedTimeout;
 
-    for (let i = 0; i < commonPasswords.length; i++) {
-        if (normalized.includes(commonPasswords[i])) {
-            return true;
-        }
+async function checkPwned(pass) {
+    if (pass.length === 0) {
+        pwnedStatusElement.innerHTML = "Waiting...";
+        pwnedStatusElement.style.color = "#333";
+        return;
     }
-    return false;
+    pwnedStatusElement.innerHTML = "Checking...";
+    pwnedStatusElement.style.color = "orange";
+    
+    try {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(pass);
+        const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+        
+        const prefix = hashHex.substring(0, 5);
+        const suffix = hashHex.substring(5);
+        
+        const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+        const textData = await response.text();
+        const hashes = textData.split('\n');
+        
+        let found = false;
+        let count = 0;
+        for (let line of hashes) {
+            const [h, c] = line.split(':');
+            if (h === suffix) {
+                found = true;
+                count = parseInt(c.trim());
+                break;
+            }
+        }
+        
+        if (found) {
+            pwnedStatusElement.innerHTML = `❌ Pwned! Found ${count.toLocaleString()} times.`;
+            pwnedStatusElement.style.color = "red";
+        } else {
+            pwnedStatusElement.innerHTML = `✅ No Breaches Found`;
+            pwnedStatusElement.style.color = "green";
+        }
+    } catch(e) {
+        pwnedStatusElement.innerHTML = "Error checking status";
+        pwnedStatusElement.style.color = "red";
+    }
 }
 
 function checkPassword(){
 
-let pass=password.value;
+    let pass = password.value;
 
-let total=0;
+    // Reset text color
+    text.style.color = "#333";
 
-// Reset text color
-text.style.color = "#333";
+    if (pass.length === 0) {
+        score.innerHTML = "0%";
+        bar.style.width = "0%";
+        bar.style.background = "red";
+        text.innerHTML = "None";
+        ai.innerHTML = "Enter a password to receive suggestions.";
+        length.innerHTML="❌ At least 8 Characters";
+        upper.innerHTML="❌ One Uppercase Letter";
+        lower.innerHTML="❌ One Lowercase Letter";
+        number.innerHTML="❌ One Number";
+        special.innerHTML="❌ One Special Character";
+        crackTimeElement.innerHTML = "Instant";
+        pwnedStatusElement.innerHTML = "Waiting...";
+        pwnedStatusElement.style.color = "#333";
+        return;
+    }
 
-if (pass.length === 0) {
-    score.innerHTML = "0%";
-    bar.style.width = "0%";
-    bar.style.background = "red";
-    text.innerHTML = "None";
-    ai.innerHTML = "Enter a password to receive suggestions.";
-    length.innerHTML="❌ At least 8 Characters";
-    upper.innerHTML="❌ One Uppercase Letter";
-    lower.innerHTML="❌ One Lowercase Letter";
-    number.innerHTML="❌ One Number";
-    special.innerHTML="❌ One Special Character";
-    return;
-}
+    // Update UI rules
+    length.innerHTML = pass.length>=8 ? "✅ At least 8 Characters" : "❌ At least 8 Characters";
+    upper.innerHTML = /[A-Z]/.test(pass) ? "✅ One Uppercase Letter" : "❌ One Uppercase Letter";
+    lower.innerHTML = /[a-z]/.test(pass) ? "✅ One Lowercase Letter" : "❌ One Lowercase Letter";
+    number.innerHTML = /[0-9]/.test(pass) ? "✅ One Number" : "❌ One Number";
+    special.innerHTML = /[!@#$%^&*(),.?":{}|<>]/.test(pass) ? "✅ One Special Character" : "❌ One Special Character";
 
-if(pass.length>=8){
-length.innerHTML="✅ At least 8 Characters";
-total+=20;
-}else{
-length.innerHTML="❌ At least 8 Characters";
-}
+    // Use zxcvbn for true entropy and crack time
+    let result;
+    if (typeof zxcvbn === 'function') {
+        result = zxcvbn(pass);
+    } else {
+        // Fallback if CDN fails
+        result = { score: 0, crack_times_display: { offline_slow_hashing_1e4_per_second: "Unknown" }, feedback: { warning: "zxcvbn failed to load" } };
+    }
 
-if(/[A-Z]/.test(pass)){
-upper.innerHTML="✅ One Uppercase Letter";
-total+=20;
-}else{
-upper.innerHTML="❌ One Uppercase Letter";
-}
+    crackTimeElement.innerHTML = result.crack_times_display.offline_slow_hashing_1e4_per_second;
 
-if(/[a-z]/.test(pass)){
-lower.innerHTML="✅ One Lowercase Letter";
-total+=20;
-}else{
-lower.innerHTML="❌ One Lowercase Letter";
-}
+    let total = 0;
+    if (result.score === 0) { total = 10; bar.style.background="red"; text.innerHTML="Very Weak"; text.style.color="red"; }
+    else if (result.score === 1) { total = 25; bar.style.background="red"; text.innerHTML="Weak"; text.style.color="red"; }
+    else if (result.score === 2) { total = 50; bar.style.background="orange"; text.innerHTML="Fair"; text.style.color="orange"; }
+    else if (result.score === 3) { total = 75; bar.style.background="dodgerblue"; text.innerHTML="Strong"; text.style.color="dodgerblue"; }
+    else if (result.score === 4) { total = 100; bar.style.background="green"; text.innerHTML="Very Strong"; text.style.color="green"; }
 
-if(/[0-9]/.test(pass)){
-number.innerHTML="✅ One Number";
-total+=20;
-}else{
-number.innerHTML="❌ One Number";
-}
+    score.innerHTML = total + "%";
+    bar.style.width = total + "%";
 
-if(/[!@#$%^&*(),.?":{}|<>]/.test(pass)){
-special.innerHTML="✅ One Special Character";
-total+=20;
-}else{
-special.innerHTML="❌ One Special Character";
-}
+    if (result.feedback && result.feedback.warning) {
+        ai.innerHTML = "🚨 " + result.feedback.warning;
+    } else if (result.feedback && result.feedback.suggestions && result.feedback.suggestions.length > 0) {
+        ai.innerHTML = "🤖 " + result.feedback.suggestions[0];
+    } else {
+        if (result.score === 4) ai.innerHTML = "🤖 Excellent! Your password is highly secure.";
+        else ai.innerHTML = "🤖 Keep adding unique characters to improve entropy.";
+    }
 
-if (isCommonPassword(pass)) {
-    score.innerHTML="0%";
-    bar.style.width="100%";
-    bar.style.background="red";
-    text.innerHTML="Very Weak";
-    text.style.color="red";
-    ai.innerHTML="🚨 Warning: This password contains a highly common dictionary pattern and is easily hacked!";
-    return;
-}
-
-score.innerHTML=total+"%";
-bar.style.width=total+"%";
-
-if(total<=20){
-bar.style.background="red";
-text.innerHTML="Weak";
-text.style.color="red";
-ai.innerHTML="Use at least 8 characters and include uppercase, lowercase, number and symbol.";
-}
-else if(total<=40){
-bar.style.background="orange";
-text.innerHTML="Fair";
-text.style.color="orange";
-ai.innerHTML="Password is improving. Add more character types.";
-}
-else if(total<=60){
-bar.style.background="gold";
-text.innerHTML="Medium";
-text.style.color="gold";
-ai.innerHTML="Add a special character and make it longer.";
-}
-else if(total<=80){
-bar.style.background="dodgerblue";
-text.innerHTML="Strong";
-text.style.color="dodgerblue";
-ai.innerHTML="Good password. Consider using 12+ characters.";
-}
-else{
-bar.style.background="green";
-text.innerHTML="Very Strong";
-text.style.color="green";
-ai.innerHTML="Excellent! Your password follows strong security practices.";
-}
+    // Debounce the HIBP API Call (Wait 500ms after last keystroke)
+    clearTimeout(pwnedTimeout);
+    pwnedTimeout = setTimeout(() => {
+        checkPwned(pass);
+    }, 500);
 
 }
 
-document.getElementById("togglePassword").onclick=function(){
-
-if(password.type==="password"){
-password.type="text";
-this.innerHTML='<i class="fa-solid fa-eye-slash"></i>';
-}else{
-password.type="password";
-this.innerHTML='<i class="fa-solid fa-eye"></i>';
-}
-
+document.getElementById("togglePassword").onclick = function(){
+    if(password.type==="password"){
+        password.type="text";
+        this.innerHTML='<i class="fa-solid fa-eye-slash"></i>';
+    }else{
+        password.type="password";
+        this.innerHTML='<i class="fa-solid fa-eye"></i>';
+    }
 }
 
 function resetAll(){
-
-password.value="";
-checkPassword();
-
+    password.value="";
+    checkPassword();
 }
 
 function generatePassword(){
+    const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*!";
+    let pass="";
+    const randomValues = new Uint32Array(14);
+    window.crypto.getRandomValues(randomValues);
 
-const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*!";
-let pass="";
-const randomValues = new Uint32Array(14);
-window.crypto.getRandomValues(randomValues);
+    for(let i=0;i<14;i++){
+        pass += chars[randomValues[i] % chars.length];
+    }
 
-for(let i=0;i<14;i++){
-    pass += chars[randomValues[i] % chars.length];
-}
-
-password.value=pass;
-checkPassword();
+    password.value=pass;
+    checkPassword();
 }
 
 function copyPassword() {
@@ -182,4 +170,35 @@ function copyPassword() {
             copyBtn.innerHTML = originalText;
         }, 2000);
     });
+}
+
+function exportAudit() {
+    if (!password.value) {
+        alert("Enter a password first to export its audit!");
+        return;
+    }
+    const auditText = `=== PASSWORD SECURITY AUDIT ===
+Generated on: ${new Date().toLocaleString()}
+
+- Password Score: ${score.innerHTML}
+- Strength Rating: ${text.innerHTML}
+- Estimated Crack Time: ${crackTimeElement.innerHTML}
+- Breach Status: ${pwnedStatusElement.innerHTML.replace(/<[^>]*>?/gm, '')} // Remove HTML tags from status
+
+AI Feedback:
+${ai.innerHTML.replace(/<[^>]*>?/gm, '')}
+
+Always use a password manager and unique passwords for every site.
+===============================
+    `.trim();
+
+    const blob = new Blob([auditText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "password_security_audit.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
